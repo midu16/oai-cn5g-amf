@@ -1299,6 +1299,9 @@ bool amf_n1::service_request_handle(
   if (pdu_session_status_opt.has_value())
     pdu_session_status = pdu_session_status_opt.value();
 
+  // TS 24.501 §5.6.1.4.1
+  release_pdu_sessions_inactive_in_ue(uc, pdu_session_status_opt, false);
+
   uint16_t uplink_data_status = 0x0000;
   if (uplink_data_status_opt.has_value())
     uplink_data_status = uplink_data_status_opt.value();
@@ -1671,6 +1674,9 @@ bool amf_n1::service_request_handle(
   uint16_t pdu_session_status = 0x0000;
   if (pdu_session_status_opt.has_value())
     pdu_session_status = pdu_session_status_opt.value();
+
+  // TS 24.501 §5.6.1.4.1
+  release_pdu_sessions_inactive_in_ue(uc, pdu_session_status_opt, false);
 
   uint16_t uplink_data_status = 0x0000;
   if (uplink_data_status_opt.has_value())
@@ -2374,13 +2380,9 @@ bool amf_n1::registration_request_handle(
       Logger::amf_n1().debug("Handling Periodic Registration Update...");
       if (is_messagecontainer)
         return run_periodic_registration_update_procedure(nc, nas_msg, cause);
-      else {
-        uint16_t pdu_session_status = 0x0000;
-        if (pdu_session_status_opt.has_value())
-          pdu_session_status = pdu_session_status_opt.value();
+      else
         return run_periodic_registration_update_procedure(
-            nc, pdu_session_status, cause);
-      }
+            nc, pdu_session_status_opt, cause);
     } break;
 
     case kEmergencyRegistration: {
@@ -2475,8 +2477,8 @@ void amf_n1::retire_stale_ue_contexts(const std::shared_ptr<ue_context>& uc) {
       nas_timer_manager_.stop_all_procedure_timers(old_nc);
     }
 
-    // The UE keeps its PDU sessions: the current context becomes their only
-    // owner
+    // Gather all the UE's PDU sessions on the current context, so that the
+    // registration releases at the SMF those the UE no longer has
     uc->take_pdu_sessions(old_uc);
 
     const uint64_t old_amf_ue_ngap_id = old_uc->amf_ue_ngap_id;
@@ -2488,6 +2490,39 @@ void amf_n1::retire_stale_ue_contexts(const std::shared_ptr<ue_context>& uc) {
         ") of SUPI %s, replaced by amf_ue_ngap_id " AMF_UE_NGAP_ID_FMT,
         old_amf_ue_ngap_id, uc->supi.c_str(), uc->amf_ue_ngap_id);
   }
+}
+
+//------------------------------------------------------------------------------
+void amf_n1::release_pdu_sessions_inactive_in_ue(
+    const std::shared_ptr<ue_context>& uc,
+    const std::optional<uint16_t>& pdu_session_status_opt,
+    bool initial_registration) {
+  // Without PDU Session Status, only an initial registration says which
+  // sessions the UE has: none
+  if (!uc || (!pdu_session_status_opt.has_value() && !initial_registration))
+    return;
+
+  std::vector<uint8_t> active_in_ue = {};
+  if (pdu_session_status_opt.has_value())
+    get_pdu_session_to_be_activated(
+        pdu_session_status_opt.value(), active_in_ue);
+
+  std::vector<std::shared_ptr<pdu_session_context>> sessions = {};
+  uc->get_pdu_sessions_context(sessions);
+  std::vector<uint8_t> to_release = {};
+  for (const auto& psc : sessions) {
+    if (std::find(
+            active_in_ue.begin(), active_in_ue.end(), psc->pdu_session_id) ==
+        active_in_ue.end())
+      to_release.push_back(psc->pdu_session_id);
+  }
+  if (to_release.empty()) return;
+
+  for (auto pdu_session_id : to_release)
+    Logger::amf_n1().info(
+        "PDU Session ID %d of SUPI %s is not active in the UE, release it",
+        pdu_session_id, uc->supi.c_str());
+  amf_app_inst->trigger_pdu_session_release(uc, to_release);
 }
 
 //------------------------------------------------------------------------------
@@ -3905,6 +3940,11 @@ bool amf_n1::security_mode_complete_handle(
   if (pdu_session_status_opt.has_value())
     pdu_session_status = pdu_session_status_opt.value();
 
+  // TS 24.501 §5.5.1.2.4, §5.5.1.3.4
+  release_pdu_sessions_inactive_in_ue(
+      uc, pdu_session_status_opt,
+      nc->registration_type == kInitialRegistration);
+
   // Get the list of PDU sessions to be activated
   std::vector<uint8_t> pdu_session_to_be_activated = {};
   if (uplink_data_status_opt.has_value())
@@ -5135,6 +5175,9 @@ bool amf_n1::run_mobility_registration_update_procedure(
   if (pdu_session_status_opt.has_value())
     pdu_session_status = pdu_session_status_opt.value();
 
+  // TS 24.501 §5.5.1.3.4
+  release_pdu_sessions_inactive_in_ue(uc, pdu_session_status_opt, false);
+
   std::vector<uint8_t> pdu_session_to_be_activated = {};
   if (uplink_data_status_opt.has_value())
     get_pdu_session_to_be_activated(
@@ -5320,6 +5363,9 @@ bool amf_n1::run_periodic_registration_update_procedure(
       amf_cfg->guami.mcc, amf_cfg->guami.mnc, amf_cfg->guami.region_id,
       amf_cfg->guami.amf_set_id, amf_cfg->guami.amf_pointer, uc->tmsi);
 
+  // TS 24.501 §5.5.1.3.4
+  release_pdu_sessions_inactive_in_ue(uc, pdu_session_status_opt, false);
+
   if (pdu_session_status_opt.has_value()) {
     reg_accept->SetPduSessionStatus(pdu_session_status);
     Logger::amf_n1().debug(
@@ -5417,6 +5463,10 @@ bool amf_n1::run_periodic_registration_update_procedure(
   reg_accept->Set5gGuti(
       amf_cfg->guami.mcc, amf_cfg->guami.mnc, amf_cfg->guami.region_id,
       amf_cfg->guami.amf_set_id, amf_cfg->guami.amf_pointer, uc->tmsi);
+
+  // TS 24.501 §5.5.1.3.4
+  release_pdu_sessions_inactive_in_ue(
+      uc, registration_request->GetPduSessionStatus(), false);
 
   uint16_t pdu_session_status = 0x0000;
   registration_request->GetPduSessionStatus(pdu_session_status);

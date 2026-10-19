@@ -1050,12 +1050,27 @@ class amf_n1 {
    * Retire the other UE contexts with the same SUPI as uc, left over from a
    * previous registration (e.g. when the UE's Deregistration was lost): stop
    * their mobile reachable/implicit deregistration timers, move their PDU
-   * sessions to uc and remove them. Must only be called once the UE is
-   * authenticated.
+   * sessions to uc (the registration then releases those the UE no longer
+   * has) and remove them. Must only be called once the UE is authenticated.
    * @param [const std::shared_ptr<ue_context>&] uc: current UE context
    * @return void
    */
   void retire_stale_ue_contexts(const std::shared_ptr<ue_context>& uc);
+
+  /*
+   * Release at the SMF the PDU sessions of uc that the UE no longer has:
+   * those not in its PDU Session Status, or all of them on an initial
+   * registration without it (TS 24.501 §5.5.1.3.4, §5.6.1.4.1)
+   * @param [const std::shared_ptr<ue_context>&] uc: UE context
+   * @param [const std::optional<uint16_t>&] pdu_session_status_opt: PDU
+   * Session Status IE received from the UE
+   * @param [bool] initial_registration: true for an initial registration
+   * @return void
+   */
+  void release_pdu_sessions_inactive_in_ue(
+      const std::shared_ptr<ue_context>& uc,
+      const std::optional<uint16_t>& pdu_session_status_opt,
+      bool initial_registration);
 
   // for Event Handling
   bs2::connection ee_ue_location_report_connection;
