@@ -814,9 +814,8 @@ void amf_sbi::handle_pdu_session_initial_request(
 //------------------------------------------------------------------------------
 void amf_sbi::handle_itti_message(
     itti_nsmf_pdusession_release_sm_context& itti_msg) {
-  std::shared_ptr<pdu_session_context> psc = {};
-  if (!amf_app_inst->get_pdu_session_context(
-          itti_msg.supi, itti_msg.pdu_session_id, psc)) {
+  std::shared_ptr<pdu_session_context> psc = itti_msg.psc;
+  if (!psc) {
     Logger::amf_sbi().error(
         "Could not find PDU Session Context (SUPI %s, PDU Session ID %d), "
         "cannot send Nsmf_PDUSession_ReleaseSMContext to SMF",

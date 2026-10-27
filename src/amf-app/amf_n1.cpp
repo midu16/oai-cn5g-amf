@@ -4725,6 +4725,7 @@ bool amf_n1::ue_initiate_de_registration_handle(
         itti_msg->pdu_session_id   = session->pdu_session_id;
         itti_msg->promise_id       = promise_id;
         itti_msg->context_location = session->smf_info.context_location;
+        itti_msg->psc              = session;
 
         int ret = itti_inst->send_msg(itti_msg);
         if (0 != ret) {
@@ -6383,6 +6384,7 @@ void amf_n1::implicit_deregistration_timer_timeout(
     itti_msg->pdu_session_id   = session->pdu_session_id;
     itti_msg->promise_id       = promise_id;
     itti_msg->context_location = session->smf_info.context_location;
+    itti_msg->psc              = session;
 
     int ret = itti_inst->send_msg(itti_msg);
     if (0 != ret) {

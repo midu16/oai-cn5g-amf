@@ -3146,6 +3146,7 @@ void amf_app::trigger_pdu_session_release(
     itti_msg->pdu_session_id   = pdu_session_id;
     itti_msg->promise_id       = promise_id;
     itti_msg->context_location = psc->smf_info.context_location;
+    itti_msg->psc              = psc;
 
     int ret = itti_inst->send_msg(itti_msg);
     if (0 != ret) {
