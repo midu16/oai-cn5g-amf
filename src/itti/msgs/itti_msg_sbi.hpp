@@ -21,6 +21,7 @@
 #include "amf_profile.hpp"
 #include "bstrlib.h"
 #include "itti_msg.hpp"
+#include "pdu_session_context.hpp"
 #include "utils.hpp"
 #include "PlmnIdNid.h"
 #include "PolicyAssociationRequest.h"
@@ -162,6 +163,9 @@ class itti_nsmf_pdusession_release_sm_context : public itti_msg_n11 {
   uint8_t pdu_session_id;
   uint32_t promise_id;
   std::string context_location;
+  // PDU session to release: a lookup by SUPI and PDU Session ID could find
+  // another UE context's session while two contexts share the SUPI
+  std::shared_ptr<pdu_session_context> psc;
 };
 
 class itti_sbi_msg : public itti_msg {
