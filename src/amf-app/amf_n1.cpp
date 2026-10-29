@@ -781,6 +781,9 @@ void amf_n1::nas_signalling_establishment_request_handle(
         "Existing nas_context with amf_ue_ngap_id (" AMF_UE_NGAP_ID_FMT ")",
         amf_ue_ngap_id);
     set_amf_ue_ngap_id_2_nas_context(amf_ue_ngap_id, nc);
+    // A NAS signalling connection is established for a UE that may be
+    // CM-IDLE with running timers (any registration type, Service Request)
+    stop_mobile_reachable_timers(nc);
   }
 
   uint8_t message_type =
@@ -1206,6 +1209,9 @@ bool amf_n1::service_request_handle(
 
   // Otherwise, continue to process Service Request message
   set_amf_ue_ngap_id_2_nas_context(amf_ue_ngap_id, nc);
+  // The UE is reachable again: without this it is implicitly deregistered
+  // ~2 x 58 min later (TS 24.501 5.3.7).
+  stop_mobile_reachable_timers(nc);
 
   if (!nc->security_ctx.has_value()) {
     Logger::amf_n1().error("No Security Context found");
@@ -1525,6 +1531,9 @@ bool amf_n1::service_request_handle(
 
   // Otherwise, continue to process Service Request message
   set_amf_ue_ngap_id_2_nas_context(amf_ue_ngap_id, nc);
+  // The UE is reachable again: without this it is implicitly deregistered
+  // ~2 x 58 min later (TS 24.501 5.3.7).
+  stop_mobile_reachable_timers(nc);
 
   if (!nc->security_ctx.has_value()) {
     Logger::amf_n1().error("No Security Context found");
@@ -5344,6 +5353,10 @@ bool amf_n1::run_periodic_registration_update_procedure(
     return false;
   }
 
+  // The UE is reachable again: without this it is implicitly deregistered
+  // ~2 x 58 min later (TS 24.501 5.3.7).
+  stop_mobile_reachable_timers(nc);
+
   uint16_t pdu_session_status = 0x0000;
   if (pdu_session_status_opt.has_value())
     pdu_session_status = pdu_session_status_opt.value();
@@ -5433,6 +5446,10 @@ bool amf_n1::run_periodic_registration_update_procedure(
     cause = k5gmmCauseMessageNotCompatible;
     return false;
   }
+
+  // The UE is reachable again: without this it is implicitly deregistered
+  // ~2 x 58 min later (TS 24.501 5.3.7).
+  stop_mobile_reachable_timers(nc);
 
   nas_procedure_manager_.start_specific_procedure(
       *nc, nas_procedure_type_e::REGISTRATION_PERIODIC);
@@ -6313,6 +6330,12 @@ void amf_n1::mobile_reachable_timer_timeout(
 
   std::shared_ptr<nas_context> nc = {};
   if (!get_nas_ctx_by_amf_ue_id(amf_ue_ngap_id, nc)) return;
+  // A stopped timer whose expiry was already queued: the UE came back
+  if (timer_id != nc->mobile_reachable_timer) {
+    Logger::amf_n1().debug(
+        "Ignoring stale Mobile Reachable Timer (tid %d)", timer_id);
+    return;
+  }
 
   set_mobile_reachable_timer_timeout(nc, true);
 
@@ -6348,6 +6371,12 @@ void amf_n1::implicit_deregistration_timer_timeout(
 
   std::shared_ptr<nas_context> nc = {};
   if (!get_nas_ctx_by_amf_ue_id(amf_ue_ngap_id, nc)) return;
+  // A stopped timer whose expiry was already queued: the UE came back
+  if (timer_id != nc->implicit_deregistration_timer) {
+    Logger::amf_n1().debug(
+        "Ignoring stale Implicit Deregistration Timer (tid %d)", timer_id);
+    return;
+  }
 
   // Implicitly de-register UE
   // TODO (4.2.2.3.3 Network-initiated Deregistration @3GPP TS 23.502V16.0.0):
@@ -6487,6 +6516,15 @@ void amf_n1::set_mobile_reachable_timer(
     std::shared_ptr<nas_context>& nc, const timer_id_t& t) {
   std::unique_lock lock(m_nas_context);
   nc->mobile_reachable_timer = t;
+}
+
+//------------------------------------------------------------------------------
+void amf_n1::stop_mobile_reachable_timers(std::shared_ptr<nas_context>& nc) {
+  itti_inst->timer_remove(nc->mobile_reachable_timer);
+  itti_inst->timer_remove(nc->implicit_deregistration_timer);
+  set_mobile_reachable_timer(nc, ITTI_INVALID_TIMER_ID);
+  set_implicit_deregistration_timer(nc, ITTI_INVALID_TIMER_ID);
+  set_mobile_reachable_timer_timeout(nc, false);  // paging works again
 }
 
 //------------------------------------------------------------------------------

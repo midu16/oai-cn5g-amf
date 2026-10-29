@@ -1657,7 +1657,9 @@ void amf_n2::handle_itti_message(
       return;
     } else {
       amf_n1_inst->set_5gcm_state(nc, CM_IDLE);
-      // Start/reset the Mobile Reachable Timer
+      // Start/reset the Mobile Reachable Timer; drop any previous one first,
+      // or it stays armed with no owner and still fires
+      amf_n1_inst->stop_mobile_reachable_timers(nc);
       timer_id_t tid = itti_inst->timer_setup(
           kMobileReachableTimerNoEmergencyServicesMin * 60, 0, TASK_AMF_N1,
           TASK_AMF_MOBILE_REACHABLE_TIMER_EXPIRE,

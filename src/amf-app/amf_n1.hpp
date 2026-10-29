@@ -470,6 +470,15 @@ class amf_n1 {
       std::shared_ptr<nas_context>& nc, const timer_id_t& t);
 
   /*
+   * Stop the Mobile Reachable and Implicit Deregistration Timers (TS 24.501
+   * 5.3.7: stopped when a NAS signalling connection is established), forget
+   * their IDs so a late expiry is ignored, and allow paging again
+   * @param [std::shared_ptr<nas_context>&] nc: Pointer to the UE NAS Context
+   * @return void
+   */
+  void stop_mobile_reachable_timers(std::shared_ptr<nas_context>& nc);
+
+  /*
    * Handle the Implicit Deregistration Timer timeout
    * @param [timer_id_t] timer_id: Timer ID
    * @param [std::string] amf_ue_ngap_id_str: string representation of AMF UE
