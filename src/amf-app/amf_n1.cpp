@@ -1354,13 +1354,24 @@ bool amf_n1::service_request_handle(
             "No PDU Session Context with PDU Session ID %d", pdu_session_id);
       }
 
-      if (psc and
-          (psc->up_cnx_state == up_cnx_state_e::UPCNX_STATE_DEACTIVATED)) {
-        amf_app_inst->trigger_pdu_session_up_activation(pdu_session_id, uc);
+      // Always ask the SMF to activate the UP connection of each PDU session
+      // to be activated (TS 23.502 clause 4.2.3.2, step 4), whatever the UP
+      // state cached in the AMF. If that state is stale, re-using the cached
+      // N2 SM information alone leaves the UPF without its UL PDR and the UL
+      // traffic of the PDU session is silently dropped.
+      bool is_up_activated = false;
+      if (psc) {
+        is_up_activated =
+            amf_app_inst->trigger_pdu_session_up_activation(pdu_session_id, uc);
+        if (!is_up_activated) {
+          Logger::amf_n1().warn(
+              "Could not activate the UP connection of PDU Session ID %d",
+              pdu_session_id);
+        }
       }
 
       pdu_session_info_t item = {};
-      if (psc and psc->is_n2sm_available) {
+      if (is_up_activated and psc->is_n2sm_available) {
         item.n2sm              = bstrcpy(psc->n2sm);
         item.is_n2sm_available = true;
       } else {
@@ -1780,13 +1791,24 @@ bool amf_n1::service_request_handle(
             "No PDU Session Context with PDU Session ID %d", pdu_session_id);
       }
 
-      if (psc and
-          (psc->up_cnx_state == up_cnx_state_e::UPCNX_STATE_DEACTIVATED)) {
-        amf_app_inst->trigger_pdu_session_up_activation(pdu_session_id, uc);
+      // Always ask the SMF to activate the UP connection of each PDU session
+      // to be activated (TS 23.502 clause 4.2.3.2, step 4), whatever the UP
+      // state cached in the AMF. If that state is stale, re-using the cached
+      // N2 SM information alone leaves the UPF without its UL PDR and the UL
+      // traffic of the PDU session is silently dropped.
+      bool is_up_activated = false;
+      if (psc) {
+        is_up_activated =
+            amf_app_inst->trigger_pdu_session_up_activation(pdu_session_id, uc);
+        if (!is_up_activated) {
+          Logger::amf_n1().warn(
+              "Could not activate the UP connection of PDU Session ID %d",
+              pdu_session_id);
+        }
       }
 
       pdu_session_info_t item = {};
-      if (psc and psc->is_n2sm_available) {
+      if (is_up_activated and psc->is_n2sm_available) {
         item.n2sm              = bstrcpy(psc->n2sm);
         item.is_n2sm_available = true;
       } else {
